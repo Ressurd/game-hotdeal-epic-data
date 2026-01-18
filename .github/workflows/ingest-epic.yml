@@ -1,0 +1,120 @@
+name: ingest-epic
+
+on:
+  schedule:
+    - cron: "30 23 * * *"
+    - cron: "30 7 * * *"
+    - cron: "30 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ingest-pages
+      cancel-in-progress: false
+    env:
+      SOURCE_REPO: Ressurd/steam-hotdeal
+    steps:
+      - name: Checkout data repo
+        uses: actions/checkout@v4
+      - name: Check gh-pages branch
+        id: ghpages
+        run: |
+          if git ls-remote --exit-code origin gh-pages; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Checkout gh-pages
+        if: steps.ghpages.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          token: ${{ secrets.SOURCE_REPO_TOKEN }}
+          path: source
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: source/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: source
+      - name: Restore cached json
+        if: steps.ghpages.outputs.exists == 'true'
+        run: |
+          mkdir -p source/public/price-history source/public/price-history-usd source/public/detail source/public/state
+          if [ -d gh-pages/price-history ]; then
+            rsync -a gh-pages/price-history/ source/public/price-history/
+          fi
+          if [ -d gh-pages/price-history-usd ]; then
+            rsync -a gh-pages/price-history-usd/ source/public/price-history-usd/
+          fi
+          if [ -d gh-pages/detail ]; then
+            rsync -a gh-pages/detail/ source/public/detail/
+          fi
+          if [ -d gh-pages/state ]; then
+            rsync -a gh-pages/state/ source/public/state/
+          fi
+          if [ -d gh-pages/list-cache ]; then
+            rsync -a gh-pages/list-cache/ source/public/list-cache/
+          fi
+      - name: Run ingest (epic)
+        run: npm run ingest:epic
+        working-directory: source
+        env:
+          EPIC_DATA_ROOT: "source/public"
+          EPIC_CC: "KR"
+          EPIC_LOCALE: "ko"
+          EPIC_FETCH_USD: "1"
+          EPIC_USD_CC: "US"
+          EPIC_USD_LOCALE: "en-US"
+          EPIC_MAX: "2000"
+          EPIC_FETCH_ATTEMPTS: "6"
+          EPIC_FETCH_DELAY_MS: "500"
+          DISCOUNT_END_STALE_HOURS: "24"
+          LIST_CACHE_LOCALES: "ko,en"
+          LIST_CACHE_LATEST_DISCOUNTS: "0,1,5"
+          LIST_CACHE_NEW_DAYS: "90"
+          PRICE_HISTORY_DAYS: "730"
+      - name: Prepare Pages output
+        run: |
+          rm -rf pages-out
+          mkdir -p pages-out
+          if [ -d gh-pages ]; then
+            rsync -a --exclude .git gh-pages/ pages-out/
+          fi
+          if [ -d source/public/list-cache ]; then
+            rsync -a --delete source/public/list-cache/ pages-out/list-cache/
+          fi
+          if [ -d source/public/detail ]; then
+            rsync -a --delete source/public/detail/ pages-out/detail/
+          fi
+          if [ -d source/public/price-history ]; then
+            rsync -a --delete source/public/price-history/ pages-out/price-history/
+          fi
+          if [ -d source/public/price-history-usd ]; then
+            rsync -a --delete source/public/price-history-usd/ pages-out/price-history-usd/
+          fi
+          if [ -d source/public/state ]; then
+            rsync -a --delete source/public/state/ pages-out/state/
+          fi
+          if [ ! -f pages-out/index.html ]; then
+            printf "data\n" > pages-out/index.html
+          fi
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: pages-out
+          clean: true
