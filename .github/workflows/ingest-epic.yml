@@ -73,7 +73,7 @@ jobs:
         run: npm run ingest:epic
         working-directory: source
         env:
-          EPIC_DATA_ROOT: "source/public"
+          EPIC_DATA_ROOT: "public"
           EPIC_CC: "KR"
           EPIC_LOCALE: "ko"
           EPIC_FETCH_USD: "1"
