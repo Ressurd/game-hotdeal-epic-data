@@ -53,7 +53,7 @@ jobs:
       - name: Restore cached json
         if: steps.ghpages.outputs.exists == 'true'
         run: |
-          mkdir -p source/public/price-history source/public/price-history-usd source/public/detail source/public/state
+          mkdir -p source/public/price-history source/public/price-history-usd source/public/detail source/public/state source/public/list-cache
           if [ -d gh-pages/price-history ]; then
             rsync -a gh-pages/price-history/ source/public/price-history/
           fi
